@@ -6,7 +6,7 @@ type PersonParams = { id: string };
 export default async function PersonPage({
   params,
 }: {
-  // ✅ Next 15：params 用 Promise
+  // ✅ Next 15：params 必须是 Promise
   params: Promise<PersonParams>;
 }) {
   const { id } = await params;
@@ -16,7 +16,6 @@ export default async function PersonPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 跟你的 FeedPage 一致：没登录就引导去登录
   if (!user) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
@@ -36,10 +35,9 @@ export default async function PersonPage({
     );
   }
 
-  // 1) 拉瓜主档案
   const { data: person, error: personError } = await supabase
     .from("persons")
-    .select("id, display_name, is_discoverable")
+    .select("id,display_name,is_discoverable")
     .eq("id", id)
     .maybeSingle();
 
@@ -50,7 +48,7 @@ export default async function PersonPage({
           加载瓜主失败：{personError.message}
         </div>
         <div className="mt-6">
-          <Link className="text-sm text-gray-600 hover:text-gray-900 underline" href="/feed">
+          <Link href="/feed" className="text-sm text-gray-600 hover:text-gray-900 underline">
             返回瓜田广场
           </Link>
         </div>
@@ -65,7 +63,7 @@ export default async function PersonPage({
           找不到这个瓜主档案（id：<span className="font-mono">{id}</span>）
         </div>
         <div className="mt-6">
-          <Link className="text-sm text-gray-600 hover:text-gray-900 underline" href="/feed">
+          <Link href="/feed" className="text-sm text-gray-600 hover:text-gray-900 underline">
             返回瓜田广场
           </Link>
         </div>
@@ -73,17 +71,15 @@ export default async function PersonPage({
     );
   }
 
-  // 2) 如果档案不对外展示（你 Feed 里没用这个字段过滤，我这里先做个温柔拦截）
   if (!person.is_discoverable) {
     return (
       <main className="max-w-2xl mx-auto p-6 min-h-screen">
         <header className="mb-6 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">瓜主档案</h1>
-          <Link className="text-sm text-gray-600 hover:text-gray-900" href="/feed">
+          <Link href="/feed" className="text-sm text-gray-600 hover:text-gray-900">
             返回广场
           </Link>
         </header>
-
         <div className="rounded-2xl bg-yellow-50 border border-yellow-100 p-5 text-sm text-yellow-800">
           该瓜主档案未开放展示。
         </div>
@@ -91,8 +87,6 @@ export default async function PersonPage({
     );
   }
 
-  // 3) 拉这个瓜主相关的瓜：person_ids contains [id]
-  //    ⚠️ 这里是否能看到，最终由你的 Supabase RLS 决定（跟 feed 一样）
   const { data: guas } = await supabase
     .from("guas")
     .select("id,title,summary_ai,content,created_at,visibility,person_ids,tags_ai,tags_manual")
@@ -105,19 +99,15 @@ export default async function PersonPage({
       <header className="mb-8 flex justify-between items-center">
         <div className="flex items-end gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{person.display_name}</h1>
-          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-            瓜主档案
-          </span>
+          <nav className="text-sm">
+            <Link href="/feed" className="text-gray-600 hover:text-gray-900">
+              返回广场
+            </Link>
+          </nav>
         </div>
-
-        <div className="flex items-center gap-4">
-          <Link href="/feed" className="text-sm text-gray-600 hover:text-gray-900">
-            返回广场
-          </Link>
-          <form action="/auth/signout" method="post">
-            <button className="text-sm text-gray-600 hover:text-gray-900">退出登录</button>
-          </form>
-        </div>
+        <form action="/auth/signout" method="post">
+          <button className="text-sm text-gray-600 hover:text-gray-900">退出登录</button>
+        </form>
       </header>
 
       <section className="space-y-4">
@@ -143,10 +133,7 @@ export default async function PersonPage({
 
               <div className="flex gap-2 flex-wrap">
                 {tags.slice(0, 8).map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded"
-                  >
+                  <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                     {tag}
                   </span>
                 ))}
