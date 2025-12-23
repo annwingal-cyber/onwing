@@ -1,129 +1,175 @@
-import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import Link from "next/link";
 
 type PersonParams = { id: string };
 
-// ✅ Next 15：params 可能是 Promise
 export default async function PersonPage({
   params,
 }: {
+  // ✅ Next 15：params 用 Promise
   params: Promise<PersonParams>;
 }) {
   const { id } = await params;
 
-  const supabase = createClient();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // 取瓜主信息（根据你表名/字段可能需要调整）
-  // 假设表：persons，主键 id
+  // 跟你的 FeedPage 一致：没登录就引导去登录
+  if (!user) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
+        <div className="text-center space-y-6 max-w-md">
+          <h1 className="text-4xl font-bold text-gray-900">瓜主档案</h1>
+          <p className="text-lg text-gray-600">登录后可查看你有权限看的瓜主档案</p>
+          <div className="flex justify-center gap-4">
+            <Link
+              href="/login"
+              className="rounded-full bg-indigo-600 px-6 py-3 text-white font-medium hover:bg-indigo-700 transition"
+            >
+              登录
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // 1) 拉瓜主档案
   const { data: person, error: personError } = await supabase
     .from("persons")
-    .select("*")
+    .select("id, display_name, is_discoverable")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
   if (personError) {
     return (
-      <div className="mx-auto max-w-2xl p-6">
-        <div className="rounded-2xl border border-black/10 bg-white/60 p-4 backdrop-blur">
-          <p className="text-sm text-red-700">加载瓜主失败：{personError.message}</p>
+      <main className="max-w-2xl mx-auto p-6 min-h-screen">
+        <div className="rounded-2xl bg-red-50 border border-red-100 p-5 text-sm text-red-700">
+          加载瓜主失败：{personError.message}
         </div>
-        <div className="mt-4">
-          <Link className="text-sm underline" href="/feed">
+        <div className="mt-6">
+          <Link className="text-sm text-gray-600 hover:text-gray-900 underline" href="/feed">
             返回瓜田广场
           </Link>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (!person) {
     return (
-      <div className="mx-auto max-w-2xl p-6">
-        <div className="rounded-2xl border border-black/10 bg-white/60 p-4 backdrop-blur">
-          <p className="text-sm text-neutral-700">找不到这个瓜主。</p>
+      <main className="max-w-2xl mx-auto p-6 min-h-screen">
+        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-5 text-sm text-gray-700">
+          找不到这个瓜主档案（id：<span className="font-mono">{id}</span>）
         </div>
-        <div className="mt-4">
-          <Link className="text-sm underline" href="/feed">
+        <div className="mt-6">
+          <Link className="text-sm text-gray-600 hover:text-gray-900 underline" href="/feed">
             返回瓜田广场
           </Link>
         </div>
-      </div>
+      </main>
     );
   }
 
-  // 取该瓜主相关的瓜（按你项目字段可能要改）
-  // 假设：gua 表里有 person_ids（数组）或 person_id（单个）
-  // 这里我写两种示例：你用哪种就保留哪种
+  // 2) 如果档案不对外展示（你 Feed 里没用这个字段过滤，我这里先做个温柔拦截）
+  if (!person.is_discoverable) {
+    return (
+      <main className="max-w-2xl mx-auto p-6 min-h-screen">
+        <header className="mb-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">瓜主档案</h1>
+          <Link className="text-sm text-gray-600 hover:text-gray-900" href="/feed">
+            返回广场
+          </Link>
+        </header>
 
-  // A) 如果是单 person_id 字段：
-  const { data: guasA } = await supabase
+        <div className="rounded-2xl bg-yellow-50 border border-yellow-100 p-5 text-sm text-yellow-800">
+          该瓜主档案未开放展示。
+        </div>
+      </main>
+    );
+  }
+
+  // 3) 拉这个瓜主相关的瓜：person_ids contains [id]
+  //    ⚠️ 这里是否能看到，最终由你的 Supabase RLS 决定（跟 feed 一样）
+  const { data: guas } = await supabase
     .from("guas")
-    .select("*")
-    .eq("person_id", id)
-    .order("created_at", { ascending: false });
-
-  // B) 如果是数组 person_ids（Postgres array），改成 contains：
-  // const { data: guasB } = await supabase
-  //   .from("guas")
-  //   .select("*")
-  //   .contains("person_ids", [id])
-  //   .order("created_at", { ascending: false });
-
-  const guas = guasA ?? [];
+    .select("id,title,summary_ai,content,created_at,visibility,person_ids,tags_ai,tags_manual")
+    .contains("person_ids", [id])
+    .order("created_at", { ascending: false })
+    .limit(50);
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {person.display_name ?? person.name ?? "瓜主档案"}
-        </h1>
-        <Link className="text-sm underline" href="/feed">
-          返回广场
-        </Link>
-      </div>
-
-      <div className="rounded-3xl border border-black/10 bg-white/60 p-5 shadow-sm backdrop-blur">
-        <div className="text-sm text-neutral-700">
-          <div className="mb-2">
-            <span className="text-neutral-500">ID：</span>
-            <span className="font-mono">{id}</span>
-          </div>
-
-          {/* 你可以把更多 person 字段展示在这里 */}
-          {person.bio ? (
-            <div className="mt-3 text-neutral-800">{person.bio}</div>
-          ) : null}
+    <main className="max-w-2xl mx-auto p-6 min-h-screen">
+      <header className="mb-8 flex justify-between items-center">
+        <div className="flex items-end gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{person.display_name}</h1>
+          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+            瓜主档案
+          </span>
         </div>
-      </div>
 
-      <div className="mt-6">
-        <h2 className="mb-3 text-lg font-semibold">相关瓜</h2>
+        <div className="flex items-center gap-4">
+          <Link href="/feed" className="text-sm text-gray-600 hover:text-gray-900">
+            返回广场
+          </Link>
+          <form action="/auth/signout" method="post">
+            <button className="text-sm text-gray-600 hover:text-gray-900">退出登录</button>
+          </form>
+        </div>
+      </header>
 
-        {guas.length === 0 ? (
-          <div className="rounded-2xl border border-black/10 bg-white/60 p-4 text-sm text-neutral-700 backdrop-blur">
-            这个瓜主还没有瓜，去记一条🍉
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {guas.map((g: any) => (
-              <div
-                key={g.id}
-                className="rounded-2xl border border-black/10 bg-white/60 p-4 backdrop-blur"
-              >
-                <div className="text-sm font-medium text-neutral-900">
-                  {g.title ?? g.summary_ai ?? "一条瓜"}
-                </div>
-                <div className="mt-1 line-clamp-2 text-sm text-neutral-700">
-                  {g.content ?? ""}
-                </div>
-                <div className="mt-2 text-xs text-neutral-500">
-                  {g.created_at ? new Date(g.created_at).toLocaleString() : ""}
-                </div>
+      <section className="space-y-4">
+        {(guas || []).map((gua) => {
+          const tags = ((gua.tags_ai as string[]) || []).concat((gua.tags_manual as string[]) || []);
+          const title = (gua.title as string) || (gua.summary_ai as string) || "无标题";
+
+          return (
+            <div
+              key={gua.id as string}
+              className="rounded-2xl bg-white border border-gray-100 shadow-sm p-5 hover:shadow-md transition"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-semibold text-lg text-gray-800">{title}</h3>
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                  {new Date(gua.created_at as string).toLocaleString()}
+                </span>
               </div>
-            ))}
+
+              <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                {(gua.summary_ai as string) || (gua.content as string)?.slice(0, 60)}
+              </p>
+
+              <div className="flex gap-2 flex-wrap">
+                {tags.slice(0, 8).map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {(!guas || guas.length === 0) && (
+          <div className="mt-8 p-4 bg-yellow-50 rounded-lg text-sm text-yellow-800">
+            <p>这个瓜主暂时没有可见的瓜（或者权限不允许你看）。</p>
           </div>
         )}
+      </section>
+
+      <div className="fixed bottom-6 right-6">
+        <Link
+          href="/compose"
+          className="bg-indigo-600 text-white p-4 rounded-full shadow-lg hover:bg-indigo-700 transition"
+        >
+          + 记瓜
+        </Link>
       </div>
-    </div>
+    </main>
   );
 }
