@@ -1,17 +1,20 @@
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 
+type PersonParams = { id: string };
+
 export default async function PersonPage({
   params,
 }: {
-  params: { id: string } | Promise<{ id: string }>;
+  params: Promise<PersonParams>;
 }) {
-  const { id } = await Promise.resolve(params);
+  const { id } = await params;
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
 
   if (!user) {
     return (
